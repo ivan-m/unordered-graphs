@@ -35,7 +35,25 @@ data Graph et n nl el = Gr { nodeMap  :: !(NodeMap n nl)
                            , edgeMap  :: !(EdgeMap n et el)
                            , nextEdge :: !Edge
                            }
-                      deriving (Eq, Show, Read)
+
+-- NOTE: we don't include nextEdge in equality tests.
+instance (Eq (et n), Eq n, Eq nl, Eq el) => Eq (Graph et n nl el) where
+  g1 == g2 =    nodeMap g1 == nodeMap g2
+             && edgeMap g1 == edgeMap g2
+
+instance (EdgeType et, Show n, Show nl, Show el) => Show (Graph et n nl el) where
+  showsPrec d g = showParen (d > 10) $
+                    showString "mkGraph "
+                    . shows (lnodes g)
+                    . showString " "
+                    . shows (ledgePairs g)
+
+instance (ValidGraph et n, Read n, Read nl, Read el) => Read (Graph et n nl el) where
+  readsPrec p = readParen (p > 10) $ \r -> do
+    ("mkGraph", s) <- lex r
+    (ns,t) <- reads s
+    (es,u) <- reads t
+    return (mkGraph ns es, u)
 
 type NodeMap n    nl    = HashMap n    (Adj, nl)
 type EdgeMap n et    el = HashMap Edge (et n, el)
@@ -46,6 +64,8 @@ newtype Edge = Edge { unEdge :: Word }
 type Set n = HashMap n ()
 
 -- How to deal with loops?
+--
+-- If we change this to being a list, then the Eq instance for Graph can't be derived.
 type Adj = Set Edge
 
 toAdj :: [Edge] -> Adj
