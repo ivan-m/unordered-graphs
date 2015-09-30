@@ -18,7 +18,73 @@ Known limitations:
   be higher than expected).
 
  -}
-module Data.Graph.Unordered where
+module Data.Graph.Unordered
+  ( -- * Graph datatype
+    Graph
+  , DirGraph
+  , UndirGraph
+  , ValidGraph
+    -- ** Edge types
+  , Edge (..)
+  , DirEdge (..)
+  , UndirEdge (..)
+  , EdgeType (..)
+  , NodeFrom (..)
+  , DirAdj (..)
+  , Identity (..)
+    -- ** Graph Context
+  , Context (..)
+  , Contextual (..)
+  , ValidContext
+  , FromContext (..)
+  , ToContext (..)
+
+    -- * Graph functions
+    -- ** Graph Information
+  , isEmpty
+
+    -- *** Node information
+  , order
+  , ninfo
+  , nodes
+  , nodeDetails
+  , lnodes
+
+    -- *** Edge information
+  , size
+  , einfo
+  , edges
+  , edgeDetails
+  , ledges
+  , edgePairs
+  , ledgePairs
+
+    -- ** Graph construction
+  , empty
+  , mkGraph
+  , insNode
+  , insEdge
+    -- *** Merging
+  , Mergeable
+  , merge
+  , mergeAs
+
+    -- ** Graph deconstruction
+  , delNode
+  , delEdge
+  , delEdgeLabel
+  , delEdgesBetween
+    -- *** Matching
+  , Matchable
+  , match
+  , matchAs
+  , matchAny
+  , matchAnyAs
+
+    -- ** Manipulation
+  , nmap
+  , emap
+  ) where
 
 import           Control.Arrow         (first, second, (***))
 import           Data.Function         (on)
@@ -71,9 +137,6 @@ type Set n = HashMap n ()
 --
 -- If we change this to being a list, then the Eq instance for Graph can't be derived.
 type Adj = Set Edge
-
-toAdj :: [Edge] -> Adj
-toAdj = M.fromList . map (,())
 
 type AdjLookup n el = HashMap Edge (n,el)
 
@@ -268,8 +331,12 @@ einfo g = (`M.lookup` edgeMap g)
 nodes :: Graph et n nl el -> [n]
 nodes = M.keys . nodeMap
 
+nodeDetails :: Graph et n nl el -> [(n, ([Edge], nl))]
+nodeDetails = map (second (first M.keys))
+              . M.toList . nodeMap
+
 lnodes :: Graph et n nl el -> [(n,nl)]
-lnodes = map (second snd) . M.toList . nodeMap
+lnodes = map (second snd) . nodeDetails
 
 edges :: Graph et n nl el -> [Edge]
 edges = M.keys . edgeMap
