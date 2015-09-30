@@ -205,6 +205,14 @@ empty = Gr M.empty M.empty minBound
 isEmpty :: Graph et n nl el -> Bool
 isEmpty = M.null . nodeMap
 
+-- | Number of nodes
+order :: Graph et n nl el -> Int
+order = M.size . nodeMap
+
+-- | Number of edges
+size :: Graph et n nl el -> Int
+size = M.size . edgeMap
+
 -- -----------------------------------------------------------------------------
 
 type Matchable et n nl el ctxt = (ValidGraph et n
@@ -364,3 +372,11 @@ delEdgesBetween u v g
     isE (et,_) = getNode (otherN u et) == v
 
     delEs = M.adjust (second (`M.difference`es))
+
+-- -----------------------------------------------------------------------------
+
+nmap :: (ValidGraph et n) => (nl -> nl') -> Graph et n nl el -> Graph et n nl' el
+nmap f g = g { nodeMap = M.map (first f) (nodeMap g) }
+
+emap :: (ValidGraph et n) => (el -> el') -> Graph et n nl el -> Graph et n nl el'
+emap f g = g { edgeMap = M.map (second f) (edgeMap g) }
