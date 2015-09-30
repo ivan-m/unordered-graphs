@@ -1,5 +1,6 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving,
-             StandaloneDeriving, TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, FlexibleInstances,
+             GeneralizedNewtypeDeriving, MultiParamTypeClasses,
+             StandaloneDeriving, TupleSections, TypeFamilies, ViewPatterns #-}
 
 {- |
    Module      : Data.Graph.Unordered
@@ -15,14 +16,14 @@ Known limitations:
  -}
 module Data.Graph.Unordered where
 
-import           Control.Arrow         (first)
+import           Control.Arrow         (first, second, (***))
 import           Data.Function         (on)
 import           Data.Functor.Identity
 import           Data.Hashable
 import           Data.HashMap.Strict   (HashMap)
 import qualified Data.HashMap.Strict   as M
-import           Data.List             (delete)
-import           Data.List             (groupBy, sortBy)
+import           Data.List             (delete, foldl', groupBy, sortBy)
+import           Data.Maybe            (listToMaybe)
 
 -- -----------------------------------------------------------------------------
 
@@ -47,6 +48,9 @@ type Set n = HashMap n ()
 -- How to deal with loops?
 type Adj = Set Edge
 
+toAdj :: [Edge] -> Adj
+toAdj = M.fromList . map (,())
+
 type AdjLookup n el = HashMap Edge (n,el)
 
 -- -----------------------------------------------------------------------------
@@ -62,7 +66,7 @@ data DirEdge n = DE { fromNode :: !n
 newtype UndirEdge n = UE { ueElem :: [n] }
                     deriving (Eq, Ord, Show, Read)
 
-class EdgeType et where
+class (NodeFrom (AdjType et)) => EdgeType et where
   type AdjType et :: * -> *
 
   mkEdge :: n -> n -> et n
@@ -70,9 +74,21 @@ class EdgeType et where
   -- | Assumes @n@ is one of the end points of this edge.
   otherN :: (Eq n) => n -> et n -> AdjType et n
 
+  toEdge :: n -> AdjType et n -> et n
+
+class NodeFrom at where
+  getNode :: at n -> n
+
+instance NodeFrom Identity where
+  getNode = runIdentity
+
 data DirAdj n = ToNode   n
               | FromNode n
               deriving (Eq, Ord, Show, Read)
+
+instance NodeFrom DirAdj where
+  getNode (ToNode   n) = n
+  getNode (FromNode n) = n
 
 instance EdgeType DirEdge where
   type AdjType DirEdge = DirAdj
@@ -84,6 +100,9 @@ instance EdgeType DirEdge where
     | n == u    = ToNode v
     | otherwise = FromNode u
 
+  toEdge u (ToNode   v) = DE u v
+  toEdge v (FromNode u) = DE u v
+
 instance EdgeType UndirEdge where
   type AdjType UndirEdge = Identity
 
@@ -91,16 +110,18 @@ instance EdgeType UndirEdge where
 
   otherN n (UE vs) = Identity $ head (delete n vs)
 
+  toEdge u (Identity v) = UE [u,v]
+
 -- -----------------------------------------------------------------------------
 
-data Context n at nl el = Ctxt { cNode  :: !n
+data Context at n nl el = Ctxt { cNode  :: !n
                                , cLabel :: !nl
                                , cAdj   :: !(AdjLookup (at n) el)
                                }
 
-deriving instance (Eq n,   Eq nl,   Eq el,   Eq   (at n)) => Eq   (Context n at nl el)
-deriving instance (Show n, Show nl, Show el, Show (at n)) => Show (Context n at nl el)
-deriving instance (Read n, Read nl, Read el, Read (at n)) => Read (Context n at nl el)
+deriving instance (Eq n,   Eq nl,   Eq el,   Eq   (at n)) => Eq   (Context at n nl el)
+deriving instance (Show n, Show nl, Show el, Show (at n)) => Show (Context at n nl el)
+deriving instance (Read n, Read nl, Read el, Read (at n)) => Read (Context at n nl el)
 
 class Contextual ctxt where
   type CNode   ctxt :: *
@@ -108,26 +129,33 @@ class Contextual ctxt where
   type CNLabel ctxt :: *
   type CELabel ctxt :: *
 
+type ValidContext et n nl el ctxt = (Contextual ctxt
+                                    ,n ~ CNode ctxt
+                                    ,AdjType et ~ CAType ctxt
+                                    ,nl ~ CNLabel ctxt
+                                    ,el ~ CELabel ctxt
+                                    )
+
+instance Contextual (Context at n nl el) where
+  type CNode   (Context at n nl el) = n
+  type CAType  (Context at n nl el) = at
+  type CNLabel (Context at n nl el) = nl
+  type CELabel (Context at n nl el) = el
+
 class (Contextual ctxt) => FromContext ctxt where
 
-  fromContext :: Context (CNode ctxt) (CAType ctxt) (CNLabel ctxt) (CELabel ctxt)
+  fromContext :: Context (CAType ctxt) (CNode ctxt) (CNLabel ctxt) (CELabel ctxt)
                  -> ctxt
 
 -- This isn't quite right: have to work out what to do with Edge identifiers.
 class (Contextual ctxt) => ToContext ctxt where
 
-  toContext :: ctxt -> Context (CNode ctxt) (CAType ctxt) (CNLabel ctxt) (CELabel ctxt)
+  toContext :: ctxt -> Context (CAType ctxt) (CNode ctxt) (CNLabel ctxt) (CELabel ctxt)
 
-instance Contextual (Context n et nl el) where
-  type CNode   (Context n et nl el) = n
-  type CAType  (Context n et nl el) = et
-  type CNLabel (Context n et nl el) = nl
-  type CELabel (Context n et nl el) = el
-
-instance FromContext (Context n et nl el) where
+instance FromContext (Context at n nl el) where
   fromContext = id
 
-instance ToContext (Context n et nl el) where
+instance ToContext (Context at n nl el) where
   toContext   = id
 
 instance Contextual (n, nl, AdjLookup (at n) el) where
@@ -164,5 +192,91 @@ instance (Ord n) => FromContext (n, nl, [(n,[el])]) where
 
 -- -----------------------------------------------------------------------------
 
-match :: (Hashable n, EdgeType et, Contextual ctxt) => n -> Graph n et nl el
-         -> Maybe (Context n (AdjType et) nl el)
+empty :: Graph et n nl el
+empty = Gr M.empty M.empty minBound
+
+isEmpty :: Graph et n nl el -> Bool
+isEmpty = M.null . nodeMap
+
+-- -----------------------------------------------------------------------------
+
+type Matchable et n nl el ctxt = (Hashable n
+                                 ,Eq n
+                                 ,EdgeType et
+                                 ,FromContext ctxt
+                                 ,ValidContext et n nl el ctxt
+                                 )
+
+match :: (Matchable et n nl el ctxt) => n -> Graph et n nl el
+         -> Maybe (ctxt, Graph et n nl el)
+match n g = getCtxt <$> M.lookup n nm
+  where
+    nm = nodeMap g
+    em = edgeMap g
+
+    getCtxt (nl,adj) = (fromContext ctxt, g')
+      where
+        ctxt = Ctxt n nl adjM
+        -- TODO: what about loops? will only appear once here...
+        adjM = M.map (first $ otherN n) (M.intersection em adj)
+
+        g' = g { nodeMap = nm'
+               , edgeMap = em'
+               }
+
+        em' = em `M.difference` adj
+
+        adjNs = filter (/=n) -- take care of loops
+                . map (getNode . fst)
+                $ M.elems adjM
+        nm' = foldl' (flip $ M.adjust (second (`M.difference`adj)))
+                     (M.delete n nm)
+                     adjNs
+
+matchAny :: (Matchable et n nl el ctxt) => Graph et n nl el
+            -> Maybe (ctxt, Graph et n nl el)
+matchAny g
+  | isEmpty g = Nothing
+  | otherwise = flip match g . head . M.keys $ nodeMap g
+
+-- -----------------------------------------------------------------------------
+
+type Mergeable et n nl el ctxt = (Hashable n
+                                 ,Eq n
+                                 ,EdgeType et
+                                 ,ToContext ctxt
+                                 ,ValidContext et n nl el ctxt
+                                 )
+
+-- Assumes edge identifiers are valid
+merge :: (Mergeable et n nl el ctxt) => ctxt -> Graph et n nl el
+         -> Graph et n nl el
+merge (toContext -> ctxt) g = Gr nm' em' nextE'
+  where
+    n = cNode ctxt
+
+    adjM = cAdj ctxt
+
+    adj = () <$ adjM
+
+    -- Need to do M.unionWith concat or something
+
+    nAdj = M.toList
+           . foldl' (M.unionWith M.union) M.empty
+           . map (uncurry (flip M.singleton) . ((`M.singleton` ()) *** getNode . fst))
+           . M.toList
+           $ adjM
+
+    -- Can we blindly assume that max == last ?
+    maxCE = fmap succ . listToMaybe . sortBy (flip compare) . M.keys $ adjM
+
+    nextE = nextEdge g
+    nextE' = maybe nextE (max nextE) maxCE
+
+    em = edgeMap g
+    em' = em `M.union` M.map (first $ toEdge n) adjM
+
+    nm = nodeMap g
+    nm' = foldl' (\m (v,es) -> M.adjust (second (`M.union`es)) v m)
+                 (M.insert n (cLabel ctxt,adj) nm)
+                 nAdj
