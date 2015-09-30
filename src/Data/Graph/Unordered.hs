@@ -213,6 +213,28 @@ order = M.size . nodeMap
 size :: Graph et n nl el -> Int
 size = M.size . edgeMap
 
+-- | Assumes all nodes are in the node list.
+mkGraph :: (ValidGraph et n) => [(n,nl)] -> [(n,n,el)] -> Graph et n nl el
+mkGraph nlk elk = Gr nM eM nextE
+  where
+    addEs = zip [minBound..] elk
+
+    eM = M.fromList . map (second toE) $ addEs
+    toE (u,v,el) = (mkEdge u v, el)
+
+    adjs = foldl' (M.unionWith M.union) M.empty (concatMap toAdjM addEs)
+    toAdjM (e,(u,v,_)) = [toA u, toA v]
+      where
+        toA n = M.singleton n (M.singleton e ())
+
+    nM = M.mapWithKey (\n nl -> (M.lookupDefault M.empty n adjs, nl))
+                      (M.fromList nlk)
+
+    -- TODO: can this be derived more efficiently?
+    nextE
+      | null addEs = minBound
+      | otherwise  = succ . fst $ last addEs
+
 ninfo :: (ValidGraph et n) => Graph et n nl el -> n -> Maybe ([Edge], nl)
 ninfo g = fmap (first M.keys) . (`M.lookup` nodeMap g)
 
