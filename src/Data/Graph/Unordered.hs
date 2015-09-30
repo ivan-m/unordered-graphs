@@ -13,6 +13,10 @@ Known limitations:
 
 * Loops might not work properly.
 
+* Adding edges might not be the same depending on graph construction
+  (if you add then delete a lot of edges, then the next new edge might
+  be higher than expected).
+
  -}
 module Data.Graph.Unordered where
 
