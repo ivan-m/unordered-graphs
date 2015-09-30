@@ -213,6 +213,39 @@ order = M.size . nodeMap
 size :: Graph et n nl el -> Int
 size = M.size . edgeMap
 
+ninfo :: (ValidGraph et n) => Graph et n nl el -> n -> Maybe ([Edge], nl)
+ninfo g = fmap (first M.keys) . (`M.lookup` nodeMap g)
+
+einfo :: (ValidGraph et n) => Graph et n nl el -> Edge -> Maybe (et n, el)
+einfo g = (`M.lookup` edgeMap g)
+
+nodes :: Graph et n nl el -> [n]
+nodes = M.keys . nodeMap
+
+lnodes :: Graph et n nl el -> [(n,nl)]
+lnodes = map (second snd) . M.toList . nodeMap
+
+edges :: Graph et n nl el -> [Edge]
+edges = M.keys . edgeMap
+
+edgeDetails :: Graph et n nl el -> [(Edge, (et n, el))]
+edgeDetails = M.toList . edgeMap
+
+ledges :: Graph et n nl el -> [(Edge, el)]
+ledges = map (second snd) . edgeDetails
+
+edgePairs :: (EdgeType et) => Graph et n nl el -> [(n, n)]
+edgePairs = map (ePair . fst) . M.elems . edgeMap
+  where
+    ePair et = let [u,v] = edgeNodes et
+               in (u,v)
+
+ledgePairs :: (EdgeType et) => Graph et n nl el -> [(n,n,el)]
+ledgePairs = map eTriple . M.elems . edgeMap
+  where
+    eTriple (et,el) = let [u,v] = edgeNodes et
+                      in (u,v,el)
+
 -- -----------------------------------------------------------------------------
 
 type Matchable et n nl el ctxt = (ValidGraph et n
