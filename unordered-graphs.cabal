@@ -19,6 +19,8 @@ source-repository head
 
 library
   exposed-modules:     Data.Graph.Unordered
+                     , Data.Graph.Unordered.Algorithms.Clustering
+                     , Data.Graph.Unordered.Algorithms.Components
                      , Data.Graph.Unordered.Internal
   -- other-modules:
   -- other-extensions:
