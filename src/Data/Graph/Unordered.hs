@@ -207,12 +207,12 @@ isEmpty = M.null . nodeMap
 
 -- -----------------------------------------------------------------------------
 
-type Matchable et n nl el ctxt = (ValidGraph et n nl el
+type Matchable et n nl el ctxt = (ValidGraph et n
                                  ,FromContext ctxt
                                  ,ValidContext et n nl el ctxt
                                  )
 
-match :: (ValidGraph et n nl el) => n -> Graph et n nl el
+match :: (ValidGraph et n) => n -> Graph et n nl el
          -> Maybe (Context (AdjType et) n nl el, Graph et n nl el)
 match n g = getCtxt <$> M.lookup n nm
   where
@@ -242,7 +242,7 @@ matchAs :: (Matchable et n nl el ctxt) => n -> Graph et n nl el
            -> Maybe (ctxt, Graph et n nl el)
 matchAs n = fmap (first fromContext) . match n
 
-matchAny :: (ValidGraph et n nl el) => Graph et n nl el
+matchAny :: (ValidGraph et n) => Graph et n nl el
             -> Maybe (Context (AdjType et) n nl el, Graph et n nl el)
 matchAny g
   | isEmpty g = Nothing
@@ -254,13 +254,13 @@ matchAnyAs = fmap (first fromContext) . matchAny
 
 -- -----------------------------------------------------------------------------
 
-type Mergeable et n nl el ctxt = (ValidGraph et n nl el
+type Mergeable et n nl el ctxt = (ValidGraph et n
                                  ,ToContext ctxt
                                  ,ValidContext et n nl el ctxt
                                  )
 
 -- Assumes edge identifiers are valid
-merge :: (ValidGraph et n nl el) => Context (AdjType et) n nl el
+merge :: (ValidGraph et n) => Context (AdjType et) n nl el
          -> Graph et n nl el -> Graph et n nl el
 merge ctxt g = Gr nm' em' nextE'
   where
@@ -298,15 +298,15 @@ mergeAs = merge . toContext
 
 -- -----------------------------------------------------------------------------
 
-type ValidGraph et n nl el = (Hashable n
+type ValidGraph et n = (Hashable n
                              ,Eq n
                              ,EdgeType et
                              )
 
-insNode :: (ValidGraph et n nl el) => n -> nl -> Graph et n nl el -> Graph et n nl el
+insNode :: (ValidGraph et n) => n -> nl -> Graph et n nl el -> Graph et n nl el
 insNode n l g = g { nodeMap = M.insert n (l, M.empty) (nodeMap g) }
 
-insEdge :: (ValidGraph et n nl el) => (n,n,el) -> Graph et n nl el
+insEdge :: (ValidGraph et n) => (n,n,el) -> Graph et n nl el
            -> (Edge, Graph et n nl el)
 insEdge (u,v,l) g = (e, Gr nm' em' (succ e))
   where
@@ -318,10 +318,10 @@ insEdge (u,v,l) g = (e, Gr nm' em' (succ e))
 
     em' = M.insert e (mkEdge u v, l) (edgeMap g)
 
-delNode :: (ValidGraph et n nl el) => n -> Graph et n nl el -> Graph et n nl el
+delNode :: (ValidGraph et n) => n -> Graph et n nl el -> Graph et n nl el
 delNode n g = maybe g snd $ match n g
 
-delEdge :: (ValidGraph et n nl el) => Edge -> Graph et n nl el -> Graph et n nl el
+delEdge :: (ValidGraph et n) => Edge -> Graph et n nl el -> Graph et n nl el
 delEdge e g = g { nodeMap = foldl' (flip delE) (nodeMap g) ens
                 , edgeMap = M.delete e (edgeMap g)
                 }
@@ -331,7 +331,7 @@ delEdge e g = g { nodeMap = foldl' (flip delE) (nodeMap g) ens
     delE = M.adjust (second $ M.delete e)
 
 -- TODO: care about directionality of edge.
-delEdgeLabel :: (ValidGraph et n nl el, Eq el) => (n,n,el) -> Graph et n nl el
+delEdgeLabel :: (ValidGraph et n, Eq el) => (n,n,el) -> Graph et n nl el
                 -> Graph et n nl el
 delEdgeLabel (u,v,l) g
   | M.null es = g
@@ -349,7 +349,7 @@ delEdgeLabel (u,v,l) g
 
     delEs = M.adjust (second (`M.difference`es))
 
-delEdgesBetween :: (ValidGraph et n nl el) => n -> n -> Graph et n nl el
+delEdgesBetween :: (ValidGraph et n) => n -> n -> Graph et n nl el
                    -> Graph et n nl el
 delEdgesBetween u v g
   | M.null es = g
