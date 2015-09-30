@@ -37,7 +37,7 @@ data Graph et n nl el = Gr { nodeMap  :: !(NodeMap n nl)
                            }
                       deriving (Eq, Show, Read)
 
-type NodeMap n    nl    = HashMap n    (nl, Adj)
+type NodeMap n    nl    = HashMap n    (Adj, nl)
 type EdgeMap n et    el = HashMap Edge (et n, el)
 
 newtype Edge = Edge { unEdge :: Word }
@@ -227,7 +227,7 @@ match n g = getCtxt <$> M.lookup n nm
     nm = nodeMap g
     em = edgeMap g
 
-    getCtxt (nl,adj) = (ctxt, g')
+    getCtxt (adj,nl) = (ctxt, g')
       where
         ctxt = Ctxt n nl adjM
         -- TODO: what about loops? will only appear once here...
@@ -242,7 +242,7 @@ match n g = getCtxt <$> M.lookup n nm
         adjNs = filter (/=n) -- take care of loops
                 . map (getNode . fst)
                 $ M.elems adjM
-        nm' = foldl' (flip $ M.adjust (second (`M.difference`adj)))
+        nm' = foldl' (flip $ M.adjust (first (`M.difference`adj)))
                      (M.delete n nm)
                      adjNs
 
@@ -296,8 +296,8 @@ merge ctxt g = Gr nm' em' nextE'
     em' = em `M.union` M.map (first $ toEdge n) adjM
 
     nm = nodeMap g
-    nm' = foldl' (\m (v,es) -> M.adjust (second (`M.union`es)) v m)
-                 (M.insert n (cLabel ctxt,adj) nm)
+    nm' = foldl' (\m (v,es) -> M.adjust (first (`M.union`es)) v m)
+                 (M.insert n (adj,cLabel ctxt) nm)
                  nAdj
 
 mergeAs :: (Mergeable et n nl el ctxt) => ctxt -> Graph et n nl el
@@ -312,7 +312,7 @@ type ValidGraph et n = (Hashable n
                              )
 
 insNode :: (ValidGraph et n) => n -> nl -> Graph et n nl el -> Graph et n nl el
-insNode n l g = g { nodeMap = M.insert n (l, M.empty) (nodeMap g) }
+insNode n l g = g { nodeMap = M.insert n (M.empty, l) (nodeMap g) }
 
 insEdge :: (ValidGraph et n) => (n,n,el) -> Graph et n nl el
            -> (Edge, Graph et n nl el)
@@ -322,7 +322,7 @@ insEdge (u,v,l) g = (e, Gr nm' em' (succ e))
 
     nm' = addE u . addE v $ nodeMap g
 
-    addE = M.adjust (second $ M.insert e ())
+    addE = M.adjust (first $ M.insert e ())
 
     em' = M.insert e (mkEdge u v, l) (edgeMap g)
 
@@ -336,7 +336,7 @@ delEdge e g = g { nodeMap = foldl' (flip delE) (nodeMap g) ens
   where
     ens = maybe [] (edgeNodes . fst) (M.lookup e (edgeMap g))
 
-    delE = M.adjust (second $ M.delete e)
+    delE = M.adjust (first $ M.delete e)
 
 -- TODO: care about directionality of edge.
 delEdgeLabel :: (ValidGraph et n, Eq el) => (n,n,el) -> Graph et n nl el
@@ -351,11 +351,11 @@ delEdgeLabel (u,v,l) g
 
     em = edgeMap g
 
-    es = maybe M.empty (M.filter isE . M.intersection em . snd) $ M.lookup u nm
+    es = maybe M.empty (M.filter isE . M.intersection em . fst) $ M.lookup u nm
 
     isE (et,el) = getNode (otherN u et) == v && el == l
 
-    delEs = M.adjust (second (`M.difference`es))
+    delEs = M.adjust (first (`M.difference`es))
 
 delEdgesBetween :: (ValidGraph et n) => n -> n -> Graph et n nl el
                    -> Graph et n nl el
@@ -367,16 +367,16 @@ delEdgesBetween u v g
   where
     nm = nodeMap g
     em = edgeMap g
-    es = maybe M.empty (M.filter isE . M.intersection em . snd) $ M.lookup u nm
+    es = maybe M.empty (M.filter isE . M.intersection em . fst) $ M.lookup u nm
 
     isE (et,_) = getNode (otherN u et) == v
 
-    delEs = M.adjust (second (`M.difference`es))
+    delEs = M.adjust (first (`M.difference`es))
 
 -- -----------------------------------------------------------------------------
 
 nmap :: (ValidGraph et n) => (nl -> nl') -> Graph et n nl el -> Graph et n nl' el
-nmap f g = g { nodeMap = M.map (first f) (nodeMap g) }
+nmap f g = g { nodeMap = M.map (second f) (nodeMap g) }
 
 emap :: (ValidGraph et n) => (el -> el') -> Graph et n nl el -> Graph et n nl el'
 emap f g = g { edgeMap = M.map (second f) (edgeMap g) }
