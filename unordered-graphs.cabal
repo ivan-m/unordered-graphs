@@ -25,7 +25,8 @@ library
   -- other-modules:
   -- other-extensions:
   build-depends:       base >=4.8 && <4.9
-                     , unordered-containers == 0.2.*
+                     , dlist >= 0.5 && < 0.8
                      , hashable
+                     , unordered-containers == 0.2.*
   hs-source-dirs:      src
   default-language:    Haskell2010
