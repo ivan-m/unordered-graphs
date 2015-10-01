@@ -34,6 +34,7 @@ module Data.Graph.Unordered
   , Identity (..)
     -- ** Graph Context
   , Context (..)
+  , AdjLookup
   , Contextual (..)
   , ValidContext
   , FromContext (..)
@@ -62,6 +63,7 @@ module Data.Graph.Unordered
     -- ** Graph construction
   , empty
   , mkGraph
+  , buildGr
   , insNode
   , insEdge
     -- *** Merging
@@ -321,6 +323,12 @@ mkGraph nlk elk = Gr nM eM nextE
     nextE
       | null addEs = minBound
       | otherwise  = succ . fst $ last addEs
+
+-- | Assumes the Contexts describe a graph in total, with the
+-- outermost one first (i.e. @buildGr (c:cs) == c `merge` buildGr
+-- cs@).
+buildGr :: (ValidGraph et n) => [Context (AdjType et) n nl el] -> Graph et n nl el
+buildGr = foldr merge empty
 
 ninfo :: (ValidGraph et n) => Graph et n nl el -> n -> Maybe ([Edge], nl)
 ninfo g = fmap (first M.keys) . (`M.lookup` nodeMap g)
