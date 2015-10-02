@@ -88,12 +88,14 @@ module Data.Graph.Unordered
   , emap
   ) where
 
+import Data.Graph.Unordered.Internal
+
 import           Control.Arrow         (first, second, (***))
 import           Data.Function         (on)
 import           Data.Functor.Identity
-import           Data.Hashable
+import           Data.Hashable         (Hashable)
 import           Data.HashMap.Strict   (HashMap)
-import qualified Data.HashMap.Strict   as M
+import qualified Data.HashMap.Strict   as HM
 import           Data.List             (delete, foldl', groupBy, sortBy)
 import           Data.Maybe            (listToMaybe)
 
@@ -102,43 +104,6 @@ import           Data.Maybe            (listToMaybe)
 type DirGraph = Graph DirEdge
 
 type UndirGraph = Graph UndirEdge
-
-data Graph et n nl el = Gr { nodeMap  :: !(NodeMap n nl)
-                           , edgeMap  :: !(EdgeMap n et el)
-                           , nextEdge :: !Edge
-                           }
-
--- NOTE: we don't include nextEdge in equality tests.
-instance (Eq (et n), Eq n, Eq nl, Eq el) => Eq (Graph et n nl el) where
-  g1 == g2 =    nodeMap g1 == nodeMap g2
-             && edgeMap g1 == edgeMap g2
-
-instance (EdgeType et, Show n, Show nl, Show el) => Show (Graph et n nl el) where
-  showsPrec d g = showParen (d > 10) $
-                    showString "mkGraph "
-                    . shows (lnodes g)
-                    . showString " "
-                    . shows (ledgePairs g)
-
-instance (ValidGraph et n, Read n, Read nl, Read el) => Read (Graph et n nl el) where
-  readsPrec p = readParen (p > 10) $ \r -> do
-    ("mkGraph", s) <- lex r
-    (ns,t) <- reads s
-    (es,u) <- reads t
-    return (mkGraph ns es, u)
-
-type NodeMap n    nl    = HashMap n    (Adj, nl)
-type EdgeMap n et    el = HashMap Edge (et n, el)
-
-newtype Edge = Edge { unEdge :: Word }
-             deriving (Eq, Ord, Show, Read, Hashable, Enum, Bounded)
-
-type Set n = HashMap n ()
-
--- How to deal with loops?
---
--- If we change this to being a list, then the Eq instance for Graph can't be derived.
-type Adj = Set Edge
 
 type AdjLookup n el = HashMap Edge (n,el)
 
@@ -154,25 +119,6 @@ data DirEdge n = DE { fromNode :: !n
 -- TODO: compare against using a simple tuple.
 newtype UndirEdge n = UE { ueElem :: [n] }
                     deriving (Eq, Ord, Show, Read)
-
-class (NodeFrom (AdjType et)) => EdgeType et where
-  type AdjType et :: * -> *
-
-  mkEdge :: n -> n -> et n
-
-  -- | Assumes @n@ is one of the end points of this edge.
-  otherN :: (Eq n) => n -> et n -> AdjType et n
-
-  toEdge :: n -> AdjType et n -> et n
-
-  -- | Returns a list of length 2.
-  edgeNodes :: et n -> [n]
-
-class NodeFrom at where
-  getNode :: at n -> n
-
-instance NodeFrom Identity where
-  getNode = runIdentity
 
 data DirAdj n = ToNode   n
               | FromNode n
@@ -281,7 +227,7 @@ instance (Ord n) => FromContext (n, nl, [(n,[el])]) where
                  . groupBy ((==) `on` fst)
                  . sortBy (compare `on` fst)
                  . map (first runIdentity)
-                 . M.elems
+                 . HM.elems
 
 -- Can't have a ToContext for (n, nl, [(n,[el])]) as we threw out the
 -- Edge values.
@@ -289,40 +235,18 @@ instance (Ord n) => FromContext (n, nl, [(n,[el])]) where
 -- -----------------------------------------------------------------------------
 
 empty :: Graph et n nl el
-empty = Gr M.empty M.empty minBound
+empty = Gr HM.empty HM.empty minBound
 
 isEmpty :: Graph et n nl el -> Bool
-isEmpty = M.null . nodeMap
+isEmpty = HM.null . nodeMap
 
 -- | Number of nodes
 order :: Graph et n nl el -> Int
-order = M.size . nodeMap
+order = HM.size . nodeMap
 
 -- | Number of edges
 size :: Graph et n nl el -> Int
-size = M.size . edgeMap
-
--- | Assumes all nodes are in the node list.
-mkGraph :: (ValidGraph et n) => [(n,nl)] -> [(n,n,el)] -> Graph et n nl el
-mkGraph nlk elk = Gr nM eM nextE
-  where
-    addEs = zip [minBound..] elk
-
-    eM = M.fromList . map (second toE) $ addEs
-    toE (u,v,el) = (mkEdge u v, el)
-
-    adjs = foldl' (M.unionWith M.union) M.empty (concatMap toAdjM addEs)
-    toAdjM (e,(u,v,_)) = [toA u, toA v]
-      where
-        toA n = M.singleton n (M.singleton e ())
-
-    nM = M.mapWithKey (\n nl -> (M.lookupDefault M.empty n adjs, nl))
-                      (M.fromList nlk)
-
-    -- TODO: can this be derived more efficiently?
-    nextE
-      | null addEs = minBound
-      | otherwise  = succ . fst $ last addEs
+size = HM.size . edgeMap
 
 -- | Assumes the Contexts describe a graph in total, with the
 -- outermost one first (i.e. @buildGr (c:cs) == c `merge` buildGr
@@ -331,41 +255,13 @@ buildGr :: (ValidGraph et n) => [Context (AdjType et) n nl el] -> Graph et n nl 
 buildGr = foldr merge empty
 
 ninfo :: (ValidGraph et n) => Graph et n nl el -> n -> Maybe ([Edge], nl)
-ninfo g = fmap (first M.keys) . (`M.lookup` nodeMap g)
+ninfo g = fmap (first HM.keys) . (`HM.lookup` nodeMap g)
 
 einfo :: (ValidGraph et n) => Graph et n nl el -> Edge -> Maybe (et n, el)
-einfo g = (`M.lookup` edgeMap g)
+einfo g = (`HM.lookup` edgeMap g)
 
 nodes :: Graph et n nl el -> [n]
-nodes = M.keys . nodeMap
-
-nodeDetails :: Graph et n nl el -> [(n, ([Edge], nl))]
-nodeDetails = map (second (first M.keys))
-              . M.toList . nodeMap
-
-lnodes :: Graph et n nl el -> [(n,nl)]
-lnodes = map (second snd) . nodeDetails
-
-edges :: Graph et n nl el -> [Edge]
-edges = M.keys . edgeMap
-
-edgeDetails :: Graph et n nl el -> [(Edge, (et n, el))]
-edgeDetails = M.toList . edgeMap
-
-ledges :: Graph et n nl el -> [(Edge, el)]
-ledges = map (second snd) . edgeDetails
-
-edgePairs :: (EdgeType et) => Graph et n nl el -> [(n, n)]
-edgePairs = map (ePair . fst) . M.elems . edgeMap
-  where
-    ePair et = let [u,v] = edgeNodes et
-               in (u,v)
-
-ledgePairs :: (EdgeType et) => Graph et n nl el -> [(n,n,el)]
-ledgePairs = map eTriple . M.elems . edgeMap
-  where
-    eTriple (et,el) = let [u,v] = edgeNodes et
-                      in (u,v,el)
+nodes = HM.keys . nodeMap
 
 -- -----------------------------------------------------------------------------
 
@@ -376,7 +272,7 @@ type Matchable et n nl el ctxt = (ValidGraph et n
 
 match :: (ValidGraph et n) => n -> Graph et n nl el
          -> Maybe (Context (AdjType et) n nl el, Graph et n nl el)
-match n g = getCtxt <$> M.lookup n nm
+match n g = getCtxt <$> HM.lookup n nm
   where
     nm = nodeMap g
     em = edgeMap g
@@ -385,19 +281,19 @@ match n g = getCtxt <$> M.lookup n nm
       where
         ctxt = Ctxt n nl adjM
         -- TODO: what about loops? will only appear once here...
-        adjM = M.map (first $ otherN n) (M.intersection em adj)
+        adjM = HM.map (first $ otherN n) (HM.intersection em adj)
 
         g' = g { nodeMap = nm'
                , edgeMap = em'
                }
 
-        em' = em `M.difference` adj
+        em' = em `HM.difference` adj
 
         adjNs = filter (/=n) -- take care of loops
                 . map (getNode . fst)
-                $ M.elems adjM
-        nm' = foldl' (flip $ M.adjust (first (`M.difference`adj)))
-                     (M.delete n nm)
+                $ HM.elems adjM
+        nm' = foldl' (flip $ HM.adjust (first (`HM.difference`adj)))
+                     (HM.delete n nm)
                      adjNs
 
 matchAs :: (Matchable et n nl el ctxt) => n -> Graph et n nl el
@@ -408,7 +304,7 @@ matchAny :: (ValidGraph et n) => Graph et n nl el
             -> Maybe (Context (AdjType et) n nl el, Graph et n nl el)
 matchAny g
   | isEmpty g = Nothing
-  | otherwise = flip match g . head . M.keys $ nodeMap g
+  | otherwise = flip match g . head . HM.keys $ nodeMap g
 
 matchAnyAs :: (Matchable et n nl el ctxt) => Graph et n nl el
               -> Maybe (ctxt, Graph et n nl el)
@@ -432,26 +328,26 @@ merge ctxt g = Gr nm' em' nextE'
 
     adj = () <$ adjM
 
-    -- Need to do M.unionWith concat or something
+    -- Need to do HM.unionWith concat or something
 
-    nAdj = M.toList
-           . foldl' (M.unionWith M.union) M.empty
-           . map (uncurry (flip M.singleton) . ((`M.singleton` ()) *** getNode . fst))
-           . M.toList
+    nAdj = HM.toList
+           . foldl' (HM.unionWith HM.union) HM.empty
+           . map (uncurry (flip HM.singleton) . ((`HM.singleton` ()) *** getNode . fst))
+           . HM.toList
            $ adjM
 
     -- Can we blindly assume that max == last ?
-    maxCE = fmap succ . listToMaybe . sortBy (flip compare) . M.keys $ adjM
+    maxCE = fmap succ . listToMaybe . sortBy (flip compare) . HM.keys $ adjM
 
     nextE = nextEdge g
     nextE' = maybe nextE (max nextE) maxCE
 
     em = edgeMap g
-    em' = em `M.union` M.map (first $ toEdge n) adjM
+    em' = em `HM.union` HM.map (first $ toEdge n) adjM
 
     nm = nodeMap g
-    nm' = foldl' (\m (v,es) -> M.adjust (first (`M.union`es)) v m)
-                 (M.insert n (adj,cLabel ctxt) nm)
+    nm' = foldl' (\m (v,es) -> HM.adjust (first (`HM.union`es)) v m)
+                 (HM.insert n (adj,cLabel ctxt) nm)
                  nAdj
 
 mergeAs :: (Mergeable et n nl el ctxt) => ctxt -> Graph et n nl el
@@ -460,13 +356,8 @@ mergeAs = merge . toContext
 
 -- -----------------------------------------------------------------------------
 
-type ValidGraph et n = (Hashable n
-                             ,Eq n
-                             ,EdgeType et
-                             )
-
 insNode :: (ValidGraph et n) => n -> nl -> Graph et n nl el -> Graph et n nl el
-insNode n l g = g { nodeMap = M.insert n (M.empty, l) (nodeMap g) }
+insNode n l g = g { nodeMap = HM.insert n (HM.empty, l) (nodeMap g) }
 
 insEdge :: (ValidGraph et n) => (n,n,el) -> Graph et n nl el
            -> (Edge, Graph et n nl el)
@@ -476,61 +367,61 @@ insEdge (u,v,l) g = (e, Gr nm' em' (succ e))
 
     nm' = addE u . addE v $ nodeMap g
 
-    addE = M.adjust (first $ M.insert e ())
+    addE = HM.adjust (first $ HM.insert e ())
 
-    em' = M.insert e (mkEdge u v, l) (edgeMap g)
+    em' = HM.insert e (mkEdge u v, l) (edgeMap g)
 
 delNode :: (ValidGraph et n) => n -> Graph et n nl el -> Graph et n nl el
 delNode n g = maybe g snd $ match n g
 
 delEdge :: (ValidGraph et n) => Edge -> Graph et n nl el -> Graph et n nl el
 delEdge e g = g { nodeMap = foldl' (flip delE) (nodeMap g) ens
-                , edgeMap = M.delete e (edgeMap g)
+                , edgeMap = HM.delete e (edgeMap g)
                 }
   where
-    ens = maybe [] (edgeNodes . fst) (M.lookup e (edgeMap g))
+    ens = maybe [] (edgeNodes . fst) (HM.lookup e (edgeMap g))
 
-    delE = M.adjust (first $ M.delete e)
+    delE = HM.adjust (first $ HM.delete e)
 
 -- TODO: care about directionality of edge.
 delEdgeLabel :: (ValidGraph et n, Eq el) => (n,n,el) -> Graph et n nl el
                 -> Graph et n nl el
 delEdgeLabel (u,v,l) g
-  | M.null es = g
+  | HM.null es = g
   | otherwise = g { nodeMap = delEs u . delEs v $ nm
-                  , edgeMap = em `M.difference` es
+                  , edgeMap = em `HM.difference` es
                   }
   where
     nm = nodeMap g
 
     em = edgeMap g
 
-    es = maybe M.empty (M.filter isE . M.intersection em . fst) $ M.lookup u nm
+    es = maybe HM.empty (HM.filter isE . HM.intersection em . fst) $ HM.lookup u nm
 
     isE (et,el) = getNode (otherN u et) == v && el == l
 
-    delEs = M.adjust (first (`M.difference`es))
+    delEs = HM.adjust (first (`HM.difference`es))
 
 delEdgesBetween :: (ValidGraph et n) => n -> n -> Graph et n nl el
                    -> Graph et n nl el
 delEdgesBetween u v g
-  | M.null es = g
+  | HM.null es = g
   | otherwise = g { nodeMap = delEs u . delEs v $ nm
-                  , edgeMap = em `M.difference` es
+                  , edgeMap = em `HM.difference` es
                   }
   where
     nm = nodeMap g
     em = edgeMap g
-    es = maybe M.empty (M.filter isE . M.intersection em . fst) $ M.lookup u nm
+    es = maybe HM.empty (HM.filter isE . HM.intersection em . fst) $ HM.lookup u nm
 
     isE (et,_) = getNode (otherN u et) == v
 
-    delEs = M.adjust (first (`M.difference`es))
+    delEs = HM.adjust (first (`HM.difference`es))
 
 -- -----------------------------------------------------------------------------
 
 nmap :: (ValidGraph et n) => (nl -> nl') -> Graph et n nl el -> Graph et n nl' el
-nmap f g = g { nodeMap = M.map (second f) (nodeMap g) }
+nmap f g = g { nodeMap = HM.map (second f) (nodeMap g) }
 
 emap :: (ValidGraph et n) => (el -> el') -> Graph et n nl el -> Graph et n nl el'
-emap f g = g { edgeMap = M.map (second f) (edgeMap g) }
+emap f g = g { edgeMap = HM.map (second f) (edgeMap g) }
