@@ -164,7 +164,7 @@ data Context at n nl el = Ctxt { cNode  :: !n
                                , cAdj   :: !(AdjLookup (at n) el)
                                }
 
-deriving instance (Eq n,   Eq nl,   Eq el,   Eq   (at n)) => Eq   (Context at n nl el)
+deriving instance (Eq   n, Eq   nl, Eq   el, Eq   (at n)) => Eq   (Context at n nl el)
 deriving instance (Show n, Show nl, Show el, Show (at n)) => Show (Context at n nl el)
 deriving instance (Read n, Read nl, Read el, Read (at n)) => Read (Context at n nl el)
 
