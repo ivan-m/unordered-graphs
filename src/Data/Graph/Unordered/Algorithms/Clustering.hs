@@ -18,6 +18,7 @@ import Data.Graph.Unordered.Algorithms.Components
 import Data.Graph.Unordered.Internal
 
 import           Control.Arrow       (first, second)
+import           Data.Bool           (bool)
 import           Data.Function       (on)
 import           Data.Hashable       (Hashable)
 import           Data.HashMap.Strict (HashMap)
@@ -43,14 +44,8 @@ newtype Community = C { getC :: Word }
 
 type ValidC et n nl el = (ValidGraph et n, Fractional el, Ord el)
 
-phaseOne :: (ValidC et n nl el) => Graph et n nl el -> (Bool, CGraph et n nl el)
-phaseOne = go . initCommunities
-  where
-    go cg
-      | didGo     = (True, snd (go cg'))
-      | otherwise = (False, cg')
-      where
-        (didGo,cg') = moveAll cg
+phaseOne :: (ValidC et n nl el) => Graph et n nl el -> Maybe (CGraph et n nl el)
+phaseOne = recurseUntil moveAll . initCommunities
 
 initCommunities :: (ValidC et n nl el) => Graph et n nl el -> CGraph et n nl el
 initCommunities g = CG { comMap = cm
@@ -62,19 +57,20 @@ initCommunities g = CG { comMap = cm
   where
     nm = nodeMap g
 
-    ((_,cm),nm') = mapAccumWithKeyL go (C 0, HM.empty) nm
+    ((_,cm),nm') = mapAccumWithKeyL go (C minBound, HM.empty) nm
 
     go (!c,!cs) n al = ( (succ c, HM.insert c (HM.singleton n ()) cs)
                        , second (c,) al
                        )
 
-moveAll :: (ValidC et n nl el) => CGraph et n nl el -> (Bool, CGraph et n nl el)
-moveAll cg = foldl' go (False,cg) (nodes (cGraph cg))
+moveAll :: (ValidC et n nl el) => CGraph et n nl el -> Maybe (CGraph et n nl el)
+moveAll cg = uncurry (bool Nothing . Just)
+             $ foldl' go (cg,False) (nodes (cGraph cg))
   where
-    go (hasM,cg') = first (hasM ||) . tryMove cg'
+    go pr@(cg',_) = maybe pr (,True) . tryMove cg'
 
-tryMove :: (ValidC et n nl el) => CGraph et n nl el -> n -> (Bool, CGraph et n nl el)
-tryMove cg n = maybe (False,cg) ((True,) . moveTo) (bestMove cg n)
+tryMove :: (ValidC et n nl el) => CGraph et n nl el -> n -> Maybe (CGraph et n nl el)
+tryMove cg n = moveTo <$> bestMove cg n
   where
     cm = comMap cg
     g  = cGraph cg
@@ -166,3 +162,10 @@ instance Applicative (StateL s) where
         let (s', f) = kf s
             (s'', v) = kv s'
         in (s'', f v)
+
+-- -----------------------------------------------------------------------------
+
+recurseUntil :: (a -> Maybe a) -> a -> Maybe a
+recurseUntil f = fmap go . f
+  where
+    go a = maybe a go (f a)
