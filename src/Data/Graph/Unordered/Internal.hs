@@ -23,7 +23,7 @@ import           Data.List             (foldl')
 -- -----------------------------------------------------------------------------
 
 data Graph et n nl el = Gr { nodeMap  :: !(NodeMap n nl)
-                           , edgeMap  :: !(EdgeMap n et el)
+                           , edgeMap  :: !(EdgeMap et n el)
                            , nextEdge :: !Edge
                            }
 
@@ -46,8 +46,8 @@ instance (ValidGraph et n, Read n, Read nl, Read el) => Read (Graph et n nl el) 
     (es,u) <- reads t
     return (mkGraph ns es, u)
 
-type NodeMap n    nl    = HashMap n    (Adj, nl)
-type EdgeMap n et    el = HashMap Edge (et n, el)
+type NodeMap    n nl    = HashMap n    (Adj, nl)
+type EdgeMap et n    el = HashMap Edge (et n, el)
 
 newtype Edge = Edge { unEdge :: Word }
              deriving (Eq, Ord, Show, Read, Hashable, Enum, Bounded)
