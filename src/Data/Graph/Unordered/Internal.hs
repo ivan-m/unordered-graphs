@@ -54,10 +54,16 @@ newtype Edge = Edge { unEdge :: Word }
 
 type Set n = HashMap n ()
 
--- How to deal with loops?
+-- The Int value is used for how many times that edge is attached to
+-- the node: 1 for normal edges, 2 for loops.
 --
 -- If we change this to being a list, then the Eq instance for Graph can't be derived.
-type Adj = Set Edge
+type Adj = HashMap Edge Int
+
+adjCount :: (Eq n) => n -> n -> Int
+adjCount u v
+  | u == v    = 2
+  | otherwise = 1
 
 type ValidGraph et n = (Hashable n
                        ,Eq n
@@ -76,12 +82,13 @@ mkGraph nlk elk = Gr nM eM nextE
     adjs = foldl' (HM.unionWith HM.union) HM.empty (concatMap toAdjM addEs)
     toAdjM (e,(u,v,_)) = [toA u, toA v]
       where
-        toA n = HM.singleton n (HM.singleton e ())
+        toA n = HM.singleton n (HM.singleton e (adjCount u v))
 
     nM = HM.mapWithKey (\n nl -> (HM.lookupDefault HM.empty n adjs, nl))
                       (HM.fromList nlk)
 
-    -- TODO: can this be derived more efficiently?
+    -- TODO: can this be derived more efficiently?  Consider defining
+    -- an alternate definition of zip...
     nextE
       | null addEs = minBound
       | otherwise  = succ . fst $ last addEs
@@ -110,7 +117,7 @@ instance NodeFrom Identity where
 -- -----------------------------------------------------------------------------
 
 nodeDetails :: Graph et n nl el -> [(n, ([Edge], nl))]
-nodeDetails = map (second (first HM.keys))
+nodeDetails = map (second (first (concatMap (uncurry $ flip replicate) . HM.toList)))
               . HM.toList . nodeMap
 
 lnodes :: Graph et n nl el -> [(n,nl)]

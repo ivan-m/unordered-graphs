@@ -11,8 +11,6 @@
 
 Known limitations:
 
-* Loops might not work properly.
-
 * Adding edges might not be the same depending on graph construction
   (if you add then delete a lot of edges, then the next new edge might
   be higher than expected).
@@ -90,10 +88,9 @@ module Data.Graph.Unordered
 
 import Data.Graph.Unordered.Internal
 
-import           Control.Arrow         (first, second, (***))
+import           Control.Arrow         (first, second)
 import           Data.Function         (on)
 import           Data.Functor.Identity
-import           Data.Hashable         (Hashable)
 import           Data.HashMap.Strict   (HashMap)
 import qualified Data.HashMap.Strict   as HM
 import           Data.List             (delete, foldl', groupBy, sortBy)
@@ -128,12 +125,13 @@ instance NodeFrom DirAdj where
   getNode (ToNode   n) = n
   getNode (FromNode n) = n
 
+-- | Note that for loops, the result of 'otherN' will always be a
+-- 'ToNode'.
 instance EdgeType DirEdge where
   type AdjType DirEdge = DirAdj
 
   mkEdge = DE
 
-  -- How does this work with loops?  Repeat it?
   otherN n (DE u v)
     | n == u    = ToNode v
     | otherwise = FromNode u
@@ -270,6 +268,8 @@ type Matchable et n nl el ctxt = (ValidGraph et n
                                  ,ValidContext et n nl el ctxt
                                  )
 
+-- | Note that for any loops, the resultant edge will only appear once
+-- in the output 'cAdj' field.
 match :: (ValidGraph et n) => n -> Graph et n nl el
          -> Maybe (Context (AdjType et) n nl el, Graph et n nl el)
 match n g = getCtxt <$> HM.lookup n nm
@@ -280,7 +280,8 @@ match n g = getCtxt <$> HM.lookup n nm
     getCtxt (adj,nl) = (ctxt, g')
       where
         ctxt = Ctxt n nl adjM
-        -- TODO: what about loops? will only appear once here...
+
+        -- Note that loops will only appear once here.
         adjM = HM.map (first $ otherN n) (HM.intersection em adj)
 
         g' = g { nodeMap = nm'
@@ -326,15 +327,16 @@ merge ctxt g = Gr nm' em' nextE'
 
     adjM = cAdj ctxt
 
-    adj = () <$ adjM
-
-    -- Need to do HM.unionWith concat or something
+    adj = HM.map (adjCount n . getNode . fst) adjM
 
     nAdj = HM.toList
            . foldl' (HM.unionWith HM.union) HM.empty
-           . map (uncurry (flip HM.singleton) . ((`HM.singleton` ()) *** getNode . fst))
+           . map (uncurry toNAdj)
            . HM.toList
            $ adjM
+
+    toNAdj e (av,_) = let v = getNode av
+                      in HM.singleton v (HM.singleton e (adjCount n v))
 
     -- Can we blindly assume that max == last ?
     maxCE = fmap succ . listToMaybe . sortBy (flip compare) . HM.keys $ adjM
@@ -367,7 +369,7 @@ insEdge (u,v,l) g = (e, Gr nm' em' (succ e))
 
     nm' = addE u . addE v $ nodeMap g
 
-    addE = HM.adjust (first $ HM.insert e ())
+    addE = HM.adjust (first $ HM.insert e (adjCount u v))
 
     em' = HM.insert e (mkEdge u v, l) (edgeMap g)
 
