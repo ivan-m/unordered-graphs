@@ -17,7 +17,6 @@ import Data.Graph.Unordered
 import Data.Graph.Unordered.Algorithms.Components
 import Data.Graph.Unordered.Internal
 
-import           Control.Arrow       (first, second)
 import           Data.Bool           (bool)
 import           Data.Function       (on)
 import           Data.Hashable       (Hashable)
@@ -34,20 +33,20 @@ import           Data.Maybe          (fromMaybe)
 bgll :: (ValidGraph et n, Fractional el) => Graph et n nl el -> [Graph et n nl el]
 bgll g = undefined
 
-data CGraph et n nl el = CG { comMap :: HashMap Community (Set n)
-                            , cGraph :: Graph et n (Community,nl) el
-                            }
-                       deriving (Eq, Show, Read)
+data CGraph et n el = CG { comMap :: HashMap Community (Set n)
+                         , cGraph :: Graph et n Community el
+                         }
+                    deriving (Eq, Show, Read)
 
-newtype Community = C { getC :: Word }
+newtype Community = C { getCommunity :: Word }
                   deriving (Eq, Ord, Show, Read, Enum, Bounded, Hashable)
 
-type ValidC et n nl el = (ValidGraph et n, Fractional el, Ord el)
+type ValidC et n el = (ValidGraph et n, Fractional el, Ord el)
 
-phaseOne :: (ValidC et n nl el) => Graph et n nl el -> Maybe (CGraph et n nl el)
+phaseOne :: (ValidC et n el) => Graph et n nl el -> Maybe (CGraph et n el)
 phaseOne = recurseUntil moveAll . initCommunities
 
-initCommunities :: (ValidC et n nl el) => Graph et n nl el -> CGraph et n nl el
+initCommunities :: (ValidC et n el) => Graph et n nl el -> CGraph et n el
 initCommunities g = CG { comMap = cm
                        , cGraph = Gr { nodeMap  = nm'
                                      , edgeMap  = edgeMap g
@@ -60,28 +59,27 @@ initCommunities g = CG { comMap = cm
     ((_,cm),nm') = mapAccumWithKeyL go (C minBound, HM.empty) nm
 
     go (!c,!cs) n al = ( (succ c, HM.insert c (HM.singleton n ()) cs)
-                       , second (c,) al
+                       , c <$ al
                        )
 
-moveAll :: (ValidC et n nl el) => CGraph et n nl el -> Maybe (CGraph et n nl el)
+moveAll :: (ValidC et n el) => CGraph et n el -> Maybe (CGraph et n el)
 moveAll cg = uncurry (bool Nothing . Just)
              $ foldl' go (cg,False) (nodes (cGraph cg))
   where
     go pr@(cg',_) = maybe pr (,True) . tryMove cg'
 
-tryMove :: (ValidC et n nl el) => CGraph et n nl el -> n -> Maybe (CGraph et n nl el)
+tryMove :: (ValidC et n el) => CGraph et n el -> n -> Maybe (CGraph et n el)
 tryMove cg n = moveTo <$> bestMove cg n
   where
     cm = comMap cg
     g  = cGraph cg
 
-    currentC = maybe (error "Node doesn't have a community!") fst
-                     (nlab g n)
+    currentC = getC g n
 
     currentCNs = cm HM.! currentC
 
     moveTo c = CG { comMap = HM.adjust (HM.insert n ()) c cm'
-                  , cGraph = nmapFor (first (const c)) g n
+                  , cGraph = nmapFor (const c) g n
                   }
       where
         currentCNs' = HM.delete n currentCNs
@@ -89,23 +87,26 @@ tryMove cg n = moveTo <$> bestMove cg n
         cm' | HM.null currentCNs' = HM.delete currentC cm
             | otherwise           = HM.adjust (const currentCNs') currentC cm
 
-bestMove :: (ValidC et n nl el) => CGraph et n nl el -> n -> Maybe Community
+bestMove :: (ValidC et n el) => CGraph et n el -> n -> Maybe Community
 bestMove cg n
   | null vs    = Nothing
   | maxDQ <= 0 = Nothing
   | otherwise  = Just maxC
   where
     g = cGraph cg
-    c = maybe (error "Node doesn't have a community!") fst (nlab g n)
+    c = getC g n
     vs = neighbours g n
-    cs = delete c . map head . group . sort . map (fst . snd . (nodeMap g HM.!)) $ vs
+    cs = delete c . map head . group . sort . map (getC g) $ vs
 
     (maxC, maxDQ) = maximumBy (compare`on`snd)
                     . map ((,) <*> diffModularity cg n)
                     $ cs
 
+getC :: (ValidC et n el) => Graph et n Community el -> n -> Community
+getC g = fromMaybe (error "Node doesn't have a community!") . nlab g
+
 -- This is the 𝝙Q function.  Assumed that @i@ is not within the community @c@.
-diffModularity :: (ValidC et n nl el) => CGraph et n nl el -> n -> Community -> el
+diffModularity :: (ValidC et n el) => CGraph et n el -> n -> Community -> el
 diffModularity cg i c = ((sumIn + kiIn)/m2 - sq ((sumTot + ki)/m2))
                         - (sumIn/m2 - sq (sumTot/m2) - sq (ki/m2))
   where
