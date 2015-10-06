@@ -143,3 +143,18 @@ ledgePairs = map eTriple . HM.elems . edgeMap
   where
     eTriple (et,el) = let [u,v] = edgeNodes et
                       in (u,v,el)
+
+-- -----------------------------------------------------------------------------
+
+degNM :: (Eq n, Hashable n) => NodeMap n nl -> n -> Int
+degNM nm = maybe 0 (sum . HM.elems . fst) . (`HM.lookup` nm)
+
+-- -----------------------------------------------------------------------------
+
+withNodeMap :: (NodeMap n nl -> NodeMap n nl')
+               -> Graph et n nl el -> Graph et n nl' el
+withNodeMap f (Gr nm em e) = Gr (f nm) em e
+
+withEdgeMap :: (EdgeMap et n el -> EdgeMap et n el')
+               -> Graph et n nl el -> Graph et n nl el'
+withEdgeMap f (Gr nm em e) = Gr nm (f em) e
