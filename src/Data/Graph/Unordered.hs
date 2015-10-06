@@ -48,6 +48,8 @@ module Data.Graph.Unordered
   , nodes
   , nodeDetails
   , lnodes
+  , nlab
+  , neighbours
 
     -- *** Edge information
   , size
@@ -55,6 +57,7 @@ module Data.Graph.Unordered
   , edges
   , edgeDetails
   , ledges
+  , elab
   , edgePairs
   , ledgePairs
 
@@ -83,7 +86,9 @@ module Data.Graph.Unordered
 
     -- ** Manipulation
   , nmap
+  , nmapFor
   , emap
+  , emapFor
   ) where
 
 import Data.Graph.Unordered.Internal
@@ -255,8 +260,18 @@ buildGr = foldr merge empty
 ninfo :: (ValidGraph et n) => Graph et n nl el -> n -> Maybe ([Edge], nl)
 ninfo g = fmap (first HM.keys) . (`HM.lookup` nodeMap g)
 
+nlab :: (ValidGraph et n) => Graph et n nl el -> n -> Maybe nl
+nlab g = fmap snd . (`HM.lookup` nodeMap g)
+
+neighbours :: (ValidGraph et n) => Graph et n nl el -> n -> [n]
+neighbours g n = maybe [] (map (getNode . otherN n . fst . (edgeMap g HM.!)) . fst)
+                 $ ninfo g n
+
 einfo :: (ValidGraph et n) => Graph et n nl el -> Edge -> Maybe (et n, el)
 einfo g = (`HM.lookup` edgeMap g)
+
+elab :: (ValidGraph et n) => Graph et n nl el -> Edge -> Maybe el
+elab g = fmap snd . einfo g
 
 nodes :: Graph et n nl el -> [n]
 nodes = HM.keys . nodeMap
@@ -423,7 +438,15 @@ delEdgesBetween u v g
 -- -----------------------------------------------------------------------------
 
 nmap :: (ValidGraph et n) => (nl -> nl') -> Graph et n nl el -> Graph et n nl' el
-nmap f g = g { nodeMap = HM.map (second f) (nodeMap g) }
+nmap f = withNodeMap (HM.map (second f))
+
+nmapFor :: (ValidGraph et n) => (nl -> nl) -> Graph et n nl el -> n
+           -> Graph et n nl el
+nmapFor f g n = withNodeMap (HM.adjust (second f) n) g
 
 emap :: (ValidGraph et n) => (el -> el') -> Graph et n nl el -> Graph et n nl el'
-emap f g = g { edgeMap = HM.map (second f) (edgeMap g) }
+emap f = withEdgeMap (HM.map (second f))
+
+emapFor :: (ValidGraph et n) => (el -> el) -> Graph et n nl el -> Edge
+           -> Graph et n nl el
+emapFor f g e = withEdgeMap (HM.adjust (second f) e) g
