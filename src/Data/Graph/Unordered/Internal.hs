@@ -1,5 +1,5 @@
 {-# LANGUAGE ConstraintKinds, FlexibleContexts, GeneralizedNewtypeDeriving,
-             MultiParamTypeClasses, TypeFamilies #-}
+             MultiParamTypeClasses, TupleSections, TypeFamilies #-}
 
 {- |
    Module      : Data.Graph.Unordered.Internal
@@ -53,6 +53,9 @@ newtype Edge = Edge { unEdge :: Word }
              deriving (Eq, Ord, Show, Read, Hashable, Enum, Bounded)
 
 type Set n = HashMap n ()
+
+mkSet :: (Eq n, Hashable n) => [n] -> Set n
+mkSet = HM.fromList . map (,())
 
 -- The Int value is used for how many times that edge is attached to
 -- the node: 1 for normal edges, 2 for loops.
