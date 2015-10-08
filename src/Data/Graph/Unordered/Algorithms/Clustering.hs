@@ -108,6 +108,7 @@ tryMove cg ns = moveTo <$> bestMove cg ns
 bestMove :: (ValidC et n el) => CGraph et n el -> [n] -> Maybe Community
 bestMove cg n
   | null vs    = Nothing
+  | null cs    = Nothing
   | maxDQ <= 0 = Nothing
   | otherwise  = Just maxC
   where
