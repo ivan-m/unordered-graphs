@@ -18,13 +18,17 @@ import Data.Graph.Unordered
 import Data.Graph.Unordered.Algorithms.Components
 import Data.Graph.Unordered.Internal
 
+import           Control.Arrow       (first)
 import           Data.Bool           (bool)
 import           Data.Function       (on)
 import           Data.Hashable       (Hashable)
 import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
-import           Data.List           (delete, foldl', group, maximumBy, sort)
-import           Data.Maybe          (fromMaybe)
+import           Data.List           (delete, foldl', foldl1', group, groupBy,
+                                      maximumBy, sort, sortBy)
+import           Data.Maybe          (fromMaybe, mapMaybe)
+import           Data.Proxy          (Proxy (Proxy))
+import           Data.Tuple          (swap)
 
 -- -----------------------------------------------------------------------------
 
@@ -44,7 +48,7 @@ deriving instance (Eq n, Eq el, Eq (et [n])) => Eq (CGraph et n el)
 newtype Community = C { getCommunity :: Word }
                   deriving (Eq, Ord, Show, Read, Enum, Bounded, Hashable)
 
-type ValidC et n el = (ValidGraph et n, Fractional el, Ord el)
+type ValidC et n el = (ValidGraph et n, EdgeMergeable et, Fractional el, Ord el)
 
 phaseOne :: (ValidC et n el) => Graph et [n] nl el -> Maybe (CGraph et n el)
 phaseOne = recurseUntil moveAll . initCommunities
@@ -145,6 +149,75 @@ diffModularity cg i c = ((sumIn + kiIn)/m2 - sq ((sumTot + ki)/m2))
     kTot = (2*) . sum . map snd . HM.elems
 
     sq x = x * x
+
+phaseTwo :: (ValidC et n el) => CGraph et n el -> Graph et [n] () el
+phaseTwo cg = mkGraph ns es
+  where
+    nsCprs = map ((,) <*> concat . HM.keys) . HM.elems $ comMap cg
+
+    nsCMp = HM.fromList (map swap nsCprs)
+
+    nsToC = HM.fromList . concatMap (\(ns,c) -> map (,c) (HM.keys ns)) $ nsCprs
+
+    emNCs = HM.map (first (fmap (nsToC HM.!))) (edgeMap (cGraph cg))
+
+    es = compressEdgeMap Proxy emNCs
+    ns = map (,()) (map snd nsCprs)
+
+    -- eM' = map toCE
+    --       . groupBy ((==)`on`fst)
+    --       . sortBy (compare`on`fst)
+    --       . map (first edgeNodes)
+    --       . HM.elems
+    --       $ edgeMap (cGraph cg)
+
+    -- d
+
+    -- toCE es = let ([u,v],_) = head es
+    --           in (u,v, sum (map snd es))
+
+-- The resultant (n,n) pairings will be unique
+compressEdgeMap :: (ValidC et n el) => Proxy et -> EdgeMap et [n] el -> [([n],[n],el)]
+compressEdgeMap p em = concatMap (\(u,vels) -> map (uncurry $ mkE u) (HM.toList vels))
+                                 (HM.toList esUndir)
+  where
+    -- Mapping on edge orders as created
+    esDir = foldl1' (HM.unionWith (HM.unionWith (+)))
+            . map ((\(u,v,el) -> HM.singleton u (HM.singleton v el)) . edgeTriple)
+            $ HM.elems em
+
+    esUndir = fst $ foldl' checkOpp (HM.empty, esDir) (HM.keys esDir)
+
+    mkE u v el
+      | el < 0    = (v,u,applyOpposite p el)
+      | otherwise = (u,v,el)
+
+    checkOpp (esU,esD) u
+      | HM.null uVs = (esU , esD' )
+      | otherwise   = (esU', esD'')
+      where
+        uVs = esD HM.! u
+        -- So we don't worry about loops.
+        esD' = HM.delete u esD
+
+        uAdj = mapMaybe (\v -> fmap (v,) . HM.lookup u =<< (HM.lookup v esD'))
+                        (HM.keys (esD' `HM.intersection` uVs))
+
+        esD'' = foldl' (flip $ HM.adjust (HM.delete u)) esD' (map fst uAdj)
+
+        uVs' = foldl' toE uVs uAdj
+        toE m (v,el) = HM.insertWith (+) v (applyOpposite p el) m
+
+        esU' = HM.insert u uVs' esU
+
+class (EdgeType et) => EdgeMergeable et where
+  applyOpposite :: (Fractional el) => Proxy et -> el -> el
+
+instance EdgeMergeable DirEdge where
+  applyOpposite _ = negate
+
+instance EdgeMergeable UndirEdge where
+  applyOpposite _ = id
 
 -- -----------------------------------------------------------------------------
 -- StateL was copied from the source of Data.Traversable in base-4.8.1.0
