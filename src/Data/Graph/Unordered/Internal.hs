@@ -98,7 +98,7 @@ mkGraph nlk elk = Gr nM eM nextE
 
 -- -----------------------------------------------------------------------------
 
-class (NodeFrom (AdjType et)) => EdgeType et where
+class (Functor et, NodeFrom (AdjType et)) => EdgeType et where
   type AdjType et :: * -> *
 
   mkEdge :: n -> n -> et n
@@ -110,6 +110,8 @@ class (NodeFrom (AdjType et)) => EdgeType et where
 
   -- | Returns a list of length 2.
   edgeNodes :: et n -> [n]
+
+  edgeTriple :: (et n, el) -> (n, n, el)
 
 class NodeFrom at where
   getNode :: at n -> n

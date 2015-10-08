@@ -1,6 +1,7 @@
-{-# LANGUAGE ConstraintKinds, FlexibleContexts, FlexibleInstances,
-             GeneralizedNewtypeDeriving, MultiParamTypeClasses,
-             StandaloneDeriving, TupleSections, TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds, DeriveFunctor, FlexibleContexts,
+             FlexibleInstances, GeneralizedNewtypeDeriving,
+             MultiParamTypeClasses, StandaloneDeriving, TupleSections,
+             TypeFamilies #-}
 
 {- |
    Module      : Data.Graph.Unordered
@@ -114,13 +115,13 @@ type AdjLookup n el = HashMap Edge (n,el)
 data DirEdge n = DE { fromNode :: !n
                     , toNode   :: !n
                     }
-               deriving (Eq, Ord, Show, Read)
+               deriving (Eq, Ord, Show, Read, Functor)
 
 -- 2-element set
 -- INVARIANT: always has length == 2.
 -- TODO: compare against using a simple tuple.
 newtype UndirEdge n = UE { ueElem :: [n] }
-                    deriving (Eq, Ord, Show, Read)
+                    deriving (Eq, Ord, Show, Read, Functor)
 
 data DirAdj n = ToNode   n
               | FromNode n
@@ -146,6 +147,8 @@ instance EdgeType DirEdge where
 
   edgeNodes (DE u v) = [u,v]
 
+  edgeTriple (DE u v, el) = (u,v,el)
+
 instance EdgeType UndirEdge where
   type AdjType UndirEdge = Identity
 
@@ -156,6 +159,9 @@ instance EdgeType UndirEdge where
   toEdge u (Identity v) = UE [u,v]
 
   edgeNodes = ueElem
+
+  edgeTriple (UE vs,el) = let [u,v] = vs
+                          in (u,v,el)
 
 -- -----------------------------------------------------------------------------
 
