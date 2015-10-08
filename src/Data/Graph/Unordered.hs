@@ -45,6 +45,7 @@ module Data.Graph.Unordered
 
     -- *** Node information
   , order
+  , hasNode
   , ninfo
   , nodes
   , nodeDetails
@@ -54,6 +55,7 @@ module Data.Graph.Unordered
 
     -- *** Edge information
   , size
+  , hasEdge
   , einfo
   , edges
   , edgeDetails
@@ -266,12 +268,18 @@ buildGr = foldr merge empty
 ninfo :: (ValidGraph et n) => Graph et n nl el -> n -> Maybe ([Edge], nl)
 ninfo g = fmap (first HM.keys) . (`HM.lookup` nodeMap g)
 
+hasNode :: (ValidGraph et n) => Graph et n nl el -> n -> Bool
+hasNode g n = HM.member n (nodeMap g)
+
 nlab :: (ValidGraph et n) => Graph et n nl el -> n -> Maybe nl
 nlab g = fmap snd . (`HM.lookup` nodeMap g)
 
 neighbours :: (ValidGraph et n) => Graph et n nl el -> n -> [n]
 neighbours g n = maybe [] (map (getNode . otherN n . fst . (edgeMap g HM.!)) . fst)
                  $ ninfo g n
+
+hasEdge :: (ValidGraph et n) => Graph et n nl el -> Edge -> Bool
+hasEdge g e = HM.member e (edgeMap g)
 
 einfo :: (ValidGraph et n) => Graph et n nl el -> Edge -> Maybe (et n, el)
 einfo g = (`HM.lookup` edgeMap g)
