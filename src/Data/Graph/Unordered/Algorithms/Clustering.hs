@@ -12,31 +12,42 @@
 
 
  -}
-module Data.Graph.Unordered.Algorithms.Clustering where
+module Data.Graph.Unordered.Algorithms.Clustering
+  (bgll
+  ,EdgeMergeable
+  ) where
 
 import Data.Graph.Unordered
-import Data.Graph.Unordered.Algorithms.Components
 import Data.Graph.Unordered.Internal
 
-import           Control.Arrow       (first)
+import           Control.Arrow       (first, (***))
+import           Control.Monad       (void)
 import           Data.Bool           (bool)
 import           Data.Function       (on)
 import           Data.Hashable       (Hashable)
 import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
-import           Data.List           (delete, foldl', foldl1', group, groupBy,
-                                      maximumBy, sort, sortBy)
+import           Data.List           (delete, foldl', foldl1', group, maximumBy,
+                                      sort)
 import           Data.Maybe          (fromMaybe, mapMaybe)
 import           Data.Proxy          (Proxy (Proxy))
-import           Data.Tuple          (swap)
 
 -- -----------------------------------------------------------------------------
 
 -- | Find communities in weighted graphs using the algorithm by
 -- Blondel, Guillaume, Lambiotte and Lefebvre in their paper
 -- <http://arxiv.org/abs/0803.0476 Fast unfolding of communities in large networks>.
-bgll :: (ValidGraph et n, Fractional el) => Graph et n nl el -> [Graph et n nl el]
-bgll g = undefined
+bgll :: (ValidGraph et n, EdgeMergeable et, Fractional el, Ord el)
+        => Graph et n nl el -> [[n]]
+bgll g = maybe [nodes g] nodes (recurseUntil pass g')
+  where
+    pass = fmap phaseTwo . phaseOne
+
+    -- HashMap doesn't allow directly mapping the keys
+    g' = Gr { nodeMap  = HM.fromList . map ((: []) *** void) . HM.toList $ nodeMap g
+            , edgeMap  = HM.map (first (fmap (: []))) (edgeMap g)
+            , nextEdge = nextEdge g
+            }
 
 data CGraph et n el = CG { comMap :: HashMap Community (Set [n])
                          , cGraph :: Graph et [n] Community el
@@ -45,7 +56,7 @@ data CGraph et n el = CG { comMap :: HashMap Community (Set [n])
 
 deriving instance (Eq n, Eq el, Eq (et [n])) => Eq (CGraph et n el)
 
-newtype Community = C { getCommunity :: Word }
+newtype Community = C Word
                   deriving (Eq, Ord, Show, Read, Enum, Bounded, Hashable)
 
 type ValidC et n el = (ValidGraph et n, EdgeMergeable et, Fractional el, Ord el)
@@ -155,9 +166,7 @@ phaseTwo cg = mkGraph ns es
   where
     nsCprs = map ((,) <*> concat . HM.keys) . HM.elems $ comMap cg
 
-    nsCMp = HM.fromList (map swap nsCprs)
-
-    nsToC = HM.fromList . concatMap (\(ns,c) -> map (,c) (HM.keys ns)) $ nsCprs
+    nsToC = HM.fromList . concatMap (\(vs,c) -> map (,c) (HM.keys vs)) $ nsCprs
 
     emNCs = HM.map (first (fmap (nsToC HM.!))) (edgeMap (cGraph cg))
 
