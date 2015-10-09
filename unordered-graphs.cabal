@@ -13,6 +13,10 @@ build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
+source-repository head
+  type:     git
+  location: https://github.com/ivan-m/unordered-graphs.git
+
 library
   exposed-modules:     Data.Graph.Unordered
                      , Data.Graph.Unordered.Internal
