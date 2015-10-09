@@ -14,6 +14,7 @@
 module Data.Graph.Unordered.Internal where
 
 import           Control.Arrow         (first, second)
+import           Control.DeepSeq       (NFData (..))
 import           Data.Functor.Identity
 import           Data.Hashable         (Hashable)
 import           Data.HashMap.Strict   (HashMap)
@@ -46,11 +47,14 @@ instance (ValidGraph et n, Read n, Read nl, Read el) => Read (Graph et n nl el) 
     (es,u) <- reads t
     return (mkGraph ns es, u)
 
+instance (NFData n, NFData (et n), NFData nl, NFData el) => NFData (Graph et n nl el) where
+  rnf (Gr nm em ne) = rnf nm `seq` rnf em `seq` rnf ne
+
 type NodeMap    n nl    = HashMap n    (Adj, nl)
 type EdgeMap et n    el = HashMap Edge (et n, el)
 
 newtype Edge = Edge { unEdge :: Word }
-             deriving (Eq, Ord, Show, Read, Hashable, Enum, Bounded)
+             deriving (Eq, Ord, Show, Read, Hashable, Enum, Bounded, NFData)
 
 type Set n = HashMap n ()
 

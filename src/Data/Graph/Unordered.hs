@@ -1,7 +1,6 @@
-{-# LANGUAGE ConstraintKinds, DeriveFunctor, FlexibleContexts,
-             FlexibleInstances, GeneralizedNewtypeDeriving,
-             MultiParamTypeClasses, StandaloneDeriving, TupleSections,
-             TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds, DeriveAnyClass, DeriveFunctor, DeriveGeneric,
+             FlexibleContexts, FlexibleInstances, MultiParamTypeClasses,
+             StandaloneDeriving, TupleSections, TypeFamilies #-}
 
 {- |
    Module      : Data.Graph.Unordered
@@ -97,12 +96,14 @@ module Data.Graph.Unordered
 import Data.Graph.Unordered.Internal
 
 import           Control.Arrow         (first, second)
+import           Control.DeepSeq       (NFData)
 import           Data.Function         (on)
 import           Data.Functor.Identity
 import           Data.HashMap.Strict   (HashMap)
 import qualified Data.HashMap.Strict   as HM
 import           Data.List             (delete, foldl', groupBy, sortBy)
 import           Data.Maybe            (listToMaybe)
+import           GHC.Generics          (Generic)
 
 -- -----------------------------------------------------------------------------
 
@@ -117,17 +118,17 @@ type AdjLookup n el = HashMap Edge (n,el)
 data DirEdge n = DE { fromNode :: !n
                     , toNode   :: !n
                     }
-               deriving (Eq, Ord, Show, Read, Functor)
+               deriving (Eq, Ord, Show, Read, Functor, Generic, NFData)
 
 -- 2-element set
 -- INVARIANT: always has length == 2.
 -- TODO: compare against using a simple tuple.
 newtype UndirEdge n = UE { ueElem :: [n] }
-                    deriving (Eq, Ord, Show, Read, Functor)
+                    deriving (Eq, Ord, Show, Read, Functor, Generic, NFData)
 
 data DirAdj n = ToNode   n
               | FromNode n
-              deriving (Eq, Ord, Show, Read)
+              deriving (Eq, Ord, Show, Read, Generic, NFData)
 
 instance NodeFrom DirAdj where
   getNode (ToNode   n) = n
@@ -171,10 +172,7 @@ data Context at n nl el = Ctxt { cNode  :: !n
                                , cLabel :: !nl
                                , cAdj   :: !(AdjLookup (at n) el)
                                }
-
-deriving instance (Eq   n, Eq   nl, Eq   el, Eq   (at n)) => Eq   (Context at n nl el)
-deriving instance (Show n, Show nl, Show el, Show (at n)) => Show (Context at n nl el)
-deriving instance (Read n, Read nl, Read el, Read (at n)) => Read (Context at n nl el)
+                        deriving (Eq, Show, Read, Generic, NFData)
 
 class Contextual ctxt where
   type CNode   ctxt :: *

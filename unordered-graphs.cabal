@@ -26,6 +26,7 @@ library
   -- other-modules:
   -- other-extensions:
   build-depends:       base >=4.8 && <4.9
+                     , deepseq >= 1.4.0.0
                      , dlist >= 0.5 && < 0.8
                      , hashable
                      , unordered-containers == 0.2.*
