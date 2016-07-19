@@ -1,5 +1,5 @@
 name:                unordered-graphs
-version:             0.1.0
+version:             0.1.0.1
 synopsis:            Graph library using unordered-containers
 description:         Simple graph library allowing any Hashable instance
                      to be a node type.
