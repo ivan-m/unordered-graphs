@@ -276,13 +276,13 @@ neighbours :: (ValidGraph et n) => Graph et n nl el -> n -> [n]
 neighbours g n = maybe [] (map (getNode . otherN n . fst . (edgeMap g HM.!)) . fst)
                  $ ninfo g n
 
-hasEdge :: (ValidGraph et n) => Graph et n nl el -> Edge -> Bool
+hasEdge :: Graph et n nl el -> Edge -> Bool
 hasEdge g e = HM.member e (edgeMap g)
 
-einfo :: (ValidGraph et n) => Graph et n nl el -> Edge -> Maybe (et n, el)
+einfo :: Graph et n nl el -> Edge -> Maybe (et n, el)
 einfo g = (`HM.lookup` edgeMap g)
 
-elab :: (ValidGraph et n) => Graph et n nl el -> Edge -> Maybe el
+elab :: Graph et n nl el -> Edge -> Maybe el
 elab g = fmap snd . einfo g
 
 nodes :: Graph et n nl el -> [n]
@@ -449,16 +449,16 @@ delEdgesBetween u v g
 
 -- -----------------------------------------------------------------------------
 
-nmap :: (ValidGraph et n) => (nl -> nl') -> Graph et n nl el -> Graph et n nl' el
+nmap :: (nl -> nl') -> Graph et n nl el -> Graph et n nl' el
 nmap f = withNodeMap (HM.map (second f))
 
 nmapFor :: (ValidGraph et n) => (nl -> nl) -> Graph et n nl el -> n
            -> Graph et n nl el
 nmapFor f g n = withNodeMap (HM.adjust (second f) n) g
 
-emap :: (ValidGraph et n) => (el -> el') -> Graph et n nl el -> Graph et n nl el'
+emap :: (el -> el') -> Graph et n nl el -> Graph et n nl el'
 emap f = withEdgeMap (HM.map (second f))
 
-emapFor :: (ValidGraph et n) => (el -> el) -> Graph et n nl el -> Edge
+emapFor :: (el -> el) -> Graph et n nl el -> Edge
            -> Graph et n nl el
 emapFor f g e = withEdgeMap (HM.adjust (second f) e) g
